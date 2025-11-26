@@ -34,6 +34,16 @@ rand_f = api.FUNCTIONS.RAND
 
 
 def process_response(response: api.CalculatorHeader) -> None:
+    """
+    Process the response from the server/proxy.
+    
+    Args:
+        response (api.CalculatorHeader): The response header.
+        
+    Raises:
+        api.CalculatorClientError: If the response indicates a client error.
+        api.CalculatorServerError: If the response indicates a server error.
+    """
     if response.is_request:
         raise api.CalculatorClientError("Got a request instead of a response")
     if response.status_code == api.CalculatorHeader.STATUS_OK:
@@ -58,6 +68,16 @@ def process_response(response: api.CalculatorHeader) -> None:
 
 
 def client(server_address: tuple[str, int], expression: api.Expression, show_steps: bool = False, cache_result: bool = False, cache_control: int = api.CalculatorHeader.MAX_CACHE_CONTROL) -> None:
+    """
+    Start the calculator client.
+    
+    Args:
+        server_address (tuple[str, int]): The address of the server (host, port).
+        expression (api.Expression): The expression to evaluate.
+        show_steps (bool): Whether to request computation steps.
+        cache_result (bool): Whether to request caching.
+        cache_control (int): Cache control value.
+    """
     server_prefix = f"{{{server_address[0]}:{server_address[1]}}}"
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as client_socket:
         client_socket.connect(server_address)

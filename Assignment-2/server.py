@@ -10,11 +10,19 @@ CACHE_CONTROL = 2 ** 16 - 1
 
 
 def calculate(expression: api.Expr, steps: list[str] = []) -> tuple[numbers.Real, list[api.Expression]]:
-    '''    
-    Function which calculates the result of an expression and returns the result and the steps taken to calculate it.
-    The function recursively descends into the expression tree and calculates the result of the expression.
-    Each expression wraps the result of its subexpressions in parentheses and adds the result to the steps list.
-    '''
+    """
+    Calculate the result of an expression recursively.
+    
+    Args:
+        expression (api.Expr): The expression to calculate.
+        steps (list[str]): A list to accumulate the calculation steps.
+        
+    Returns:
+        tuple: (result, steps)
+        
+    Raises:
+        TypeError: If the expression type is unknown.
+    """
     expr = api.type_fallback(expression)
     const = None
     if isinstance(expr, api.Constant) or isinstance(expr, api.NamedConstant):
@@ -57,9 +65,15 @@ def calculate(expression: api.Expr, steps: list[str] = []) -> tuple[numbers.Real
 
 
 def process_request(request: api.CalculatorHeader) -> api.CalculatorHeader:
-    '''
-    Function which processes a CalculatorRequest and builds a CalculatorResponse.
-    '''
+    """
+    Process a CalculatorRequest and build a CalculatorResponse.
+    
+    Args:
+        request (api.CalculatorHeader): The request header.
+        
+    Returns:
+        api.CalculatorHeader: The response header.
+    """
     result, steps = None, []
     try:
         if request.is_request:
@@ -79,6 +93,13 @@ def process_request(request: api.CalculatorHeader) -> api.CalculatorHeader:
 
 
 def server(host: str, port: int) -> None:
+    """
+    Start the calculator server.
+    
+    Args:
+        host (str): The host to bind to.
+        port (int): The port to bind to.
+    """
     # socket(socket.AF_INET, socket.SOCK_STREAM)
     # (1) AF_INET is the address family for IPv4 (Address Family)
     # (2) SOCK_STREAM is the socket type for TCP (Socket Type) - [SOCK_DGRAM is the socket type for UDP]
@@ -88,12 +109,9 @@ def server(host: str, port: int) -> None:
         server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 
         # Prepare the server socket
-
-        # * Fill in start (1)
         server_socket.bind((host, port))
         server_socket.listen(1)
         print('The server is ready to receive!')
-        # * Fill in end (1)
 
         threads = []
         print(f"Listening on {host}:{port}")
@@ -101,10 +119,7 @@ def server(host: str, port: int) -> None:
         while True:
             try:
                 # Establish connection with client.
-
-                # * Fill in start (2)
                 client_socket, address = server_socket.accept()
-                # * Fill in end (2)
 
                 # Create a new thread to handle the client request
                 thread = threading.Thread(target=client_handler, args=(
@@ -120,19 +135,19 @@ def server(host: str, port: int) -> None:
 
 
 def client_handler(client_socket: socket.socket, client_address: tuple[str, int]) -> None:
-    '''
-    Function which handles client requests
-    :type client_socket: object
-    '''
+    """
+    Handle individual client requests.
+    
+    Args:
+        client_socket (socket.socket): The client socket.
+        client_address (tuple[str, int]): The client address.
+    """
     client_addr = f"{client_address[0]}:{client_address[1]}"
     client_prefix = f"{{{client_addr}}}"
     with client_socket:  # closes the socket when the block is exited
         print(f"Conection established with {client_addr}")
         while True:
-
-            # * Fill in start (3)
             data = client_socket.recv(8192)
-            # * Fill in end (3)
 
             if not data:
                 break
@@ -152,11 +167,9 @@ def client_handler(client_socket: socket.socket, client_address: tuple[str, int]
                 print(
                     f"{client_prefix} Sending response of length {len(response)} bytes")
 
-                # * Fill in start (4)
                 client_socket.send(response)
                 client_socket.close()
                 break
-                # * Fill in end (4)
 
             except Exception as e:
                 print(f"Unexpected server error: {e}")

@@ -15,9 +15,9 @@ import typing
 
 
 class Expression(ABC):
-    '''
-    Abstract class for all expressions
-    '''
+    """
+    Abstract base class for all expressions.
+    """
 
     @abstractmethod
     def __str__(self) -> str:
@@ -25,13 +25,19 @@ class Expression(ABC):
 
     # Default implementation ignores brackets, only special cases override this
     def __str_brackets__(self, brackets: bool) -> str:
+        """
+        Return string representation with optional brackets.
+        
+        Args:
+            brackets (bool): Whether to enforce brackets.
+        """
         return str(self)
 
 
 class Constant(Expression):
-    '''
-    Constant defines a the most basic building block of an expression
-    '''
+    """
+    Constant defines the most basic building block of an expression.
+    """
 
     def __init__(self, value: numbers.Real) -> None:
         self.value = value
@@ -52,10 +58,18 @@ Expr = typing.Union[Expression, numbers.Real]
 
 
 def type_fallback(var: typing.Any) -> Expression:
-    '''
-    Function which converts a variable to an expression.
-    If the variable's type is not defined in Type_Fallbacks, a TypeError is raised.
-    '''
+    """
+    Convert a variable to an expression using Type_Fallbacks.
+    
+    Args:
+        var: The variable to convert.
+        
+    Returns:
+        Expression: The converted expression.
+        
+    Raises:
+        TypeError: If the variable type is not supported.
+    """
     if isinstance(var, Expression):
         return var
     for key, value in Type_Fallbacks.items():
@@ -66,29 +80,29 @@ def type_fallback(var: typing.Any) -> Expression:
 
 
 class Operator(ABC):
-    '''
-    Abstract class for all operators (binary and unary, and functions)
-    '''
+    """
+    Abstract base class for all operators (binary, unary, and functions).
+    """
     @abstractmethod
     def __apply__(self) -> Expr:
-        '''
-        Abstract method for applying the operator to the arguments
-        '''
+        """
+        Apply the operator to the arguments.
+        """
         pass
 
     @abstractmethod
     def __call__(self) -> Expression:
-        '''
-        Abstract method for calling the operator, currently used to build an expression given the arguments and the 'self' operator
-        '''
+        """
+        Call the operator to build an expression.
+        """
         pass
 
     @property
     @abstractmethod
     def get_symbol(self) -> str:
-        '''
-        Abstract property for getting the symbol of the operator
-        '''
+        """
+        Get the symbol of the operator.
+        """
         pass
 
     def __str__(self) -> str:
@@ -96,9 +110,9 @@ class Operator(ABC):
 
 
 class NamedConstant(Expression):
-    '''
-    NamedConstant defines a constant with a name (e.g. pi = 3.1415...)
-    '''
+    """
+    NamedConstant defines a constant with a name (e.g. pi = 3.1415...).
+    """
 
     def __init__(self, name: str, value: Expr) -> None:
         self.name = name
@@ -112,18 +126,18 @@ class NamedConstant(Expression):
 
 
 class Associativity(enum.Enum):
-    '''
-    Enum for associativity of operators
-    '''
+    """
+    Enum for associativity of operators.
+    """
     LEFT = 0
     RIGHT = 1
 
 
 class BinaryOperator(Operator):
-    '''
-    A Binary operator (e.g. +, -, *, /, etc.) is called with two operands
-    Default associativity is left-associative
-    '''
+    """
+    A Binary operator (e.g. +, -, *, /, etc.) is called with two operands.
+    Default associativity is left-associative.
+    """
 
     def __init__(self, symbol: str, function: typing.Callable[[Expr, Expr], Expr], associativity: Associativity = Associativity.LEFT) -> None:
         self.symbol = symbol
@@ -155,10 +169,9 @@ class BinaryOperator(Operator):
 
 
 class BinaryExpr(Expression):
-    '''
-    A Binary expression is an expression of the form <Expression1> <BinaryOperator> <Expression2> 
-    (where <Expression1> and <Expression2> are left and right operands respectively)
-    '''
+    """
+    A Binary expression is an expression of the form <Expression1> <BinaryOperator> <Expression2>.
+    """
 
     def __init__(self, left_operand: Expr, operator: BinaryOperator, right_operand: Expr) -> None:
         self.left_operand = type_fallback(left_operand)
@@ -182,9 +195,9 @@ class BinaryExpr(Expression):
 
 
 class UnaryOperator(Operator):
-    '''
-    A Unary operator (e.g. -) is called with one operand
-    '''
+    """
+    A Unary operator (e.g. -) is called with one operand.
+    """
 
     def __init__(self, symbol: str, function: typing.Callable[[Expr], Expr]) -> None:
         self.symbol = symbol
@@ -205,9 +218,9 @@ class UnaryOperator(Operator):
 
 
 class UnaryExpr(Expression):
-    '''
-    A Unary expression is an expression of the form <UnaryOperator> <Expression>
-    '''
+    """
+    A Unary expression is an expression of the form <UnaryOperator> <Expression>.
+    """
 
     def __init__(self, operator: UnaryOperator, operand: Expr) -> None:
         self.operator = operator
@@ -224,17 +237,18 @@ class UnaryExpr(Expression):
 
 
 class FunctionProtocol(typing.Protocol):
-    '''
-    Protocol for functions that can be used in expressions, must be callable with any number of arguments which are all expressions
-    '''
+    """
+    Protocol for functions that can be used in expressions.
+    Must be callable with any number of arguments which are all expressions.
+    """
 
     def __call__(self, *args: Expr) -> Expr: ...
 
 
 class Function(Operator):
-    '''
-    General function class, can be called with any number of arguments
-    '''
+    """
+    General function class, can be called with any number of arguments.
+    """
 
     def __init__(self, name: str, function: FunctionProtocol) -> None:
         self.name = name
@@ -255,9 +269,9 @@ class Function(Operator):
 
 
 class FunctionCallExpr(Expression):
-    '''
-    A function call expression is an expression of the form <Function> (<Expression1>, <Expression2>, ..., <ExpressionN>)
-    '''
+    """
+    A function call expression is an expression of the form <Function> (<Expression1>, ...).
+    """
 
     def __init__(self, function: Function, *args: Expr) -> None:
         self.function = function
@@ -282,6 +296,16 @@ class FunctionCallExpr(Expression):
 # region Helpers
 
 def stringify(expression: Expr, add_brackets: bool = False) -> str:
+    """
+    Convert an expression to a string, optionally adding brackets.
+    
+    Args:
+        expression (Expr): The expression to convert.
+        add_brackets (bool): Whether to add brackets.
+        
+    Returns:
+        str: The string representation.
+    """
     expr = type_fallback(expression)
     if add_brackets:
         expr_s = expr.__str_brackets__(True)

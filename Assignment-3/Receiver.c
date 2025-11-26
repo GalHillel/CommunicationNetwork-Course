@@ -10,50 +10,84 @@
 #include <unistd.h>
 #include <netinet/tcp.h>
 
-#define server_port 5060
-#define server_ip "127.0.0.1"
-#define buffer_size 1024
-#define cc1 "reno"
-#define cc2 "cubic"
+#define SERVER_PORT 5060
+#define SERVER_IP "127.0.0.1"
+#define BUFFER_SIZE 1024
+#define CC_ALGO_1 "reno"
+#define CC_ALGO_2 "cubic"
 
 // **Function Headers**:
 
-int recvFileSize(int sock, char *buffer, char *ACK);
-int sendKey(int sock, char *buffer);
-int sendACK(int sock, char *ACK);
-int writeChunk(FILE *fp, int sock, int chunkSize, char *buffer, char *ACK);
-int sendEND(int sock, char *buffer);
+/**
+ * Receives the file size from the server.
+ * @param sock The socket descriptor.
+ * @param buffer The buffer to use for receiving.
+ * @param ack The ACK message to send.
+ * @return The file size, or -1 on error.
+ */
+int recv_file_size(int sock, char *buffer, char *ack);
+
+/**
+ * Sends the key to the server.
+ * @param sock The socket descriptor.
+ * @param buffer The buffer to use for sending.
+ * @return 0 on success, -1 on error.
+ */
+int send_key(int sock, char *buffer);
+
+/**
+ * Sends an ACK message to the server.
+ * @param sock The socket descriptor.
+ * @param ack The ACK message to send.
+ * @return 0 on success, -1 on error.
+ */
+int send_ack(int sock, char *ack);
+
+/**
+ * Writes a chunk of data to the file.
+ * @param fp The file pointer.
+ * @param sock The socket descriptor.
+ * @param chunk_size The size of the chunk.
+ * @param buffer The buffer containing the chunk.
+ * @param ack The ACK message to send.
+ * @return 0 on success, -1 on error.
+ */
+int write_chunk(FILE *fp, int sock, int chunk_size, char *buffer, char *ack);
+
+/**
+ * Sends an END message to the server.
+ * @param sock The socket descriptor.
+ * @param buffer The buffer to use for receiving the ACK.
+ * @return 0 on success, -1 on error.
+ */
+int send_end(int sock, char *buffer);
 
 int main()
 {
-
-    int temp = 0; // Setting a temporary variable to help check for errors throughout the program.
-
-    int sock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP); // Creating a socket using the IPv4 module.
+    int temp = 0;
+    int sock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
 
     if (sock == -1)
     {
-        printf("Error : Listen socket creation failed.\n"); // If the socket creation failed, print the error and exit main.
+        printf("Error : Listen socket creation failed.\n");
         return -1;
     }
 
-    struct sockaddr_in serverAddress;                 // Using the imported struct of a socket address using the IPv4 module.
-    memset(&serverAddress, 0, sizeof(serverAddress)); // Resetting it to default values.
+    struct sockaddr_in server_address;
+    memset(&server_address, 0, sizeof(server_address));
 
-    serverAddress.sin_family = AF_INET;
-    serverAddress.sin_port = htons(server_port);                                 // Changing little endian to big endian.
-    temp = inet_pton(AF_INET, (const char *)server_ip, &serverAddress.sin_addr); // Converting the IP address from string to binary.
+    server_address.sin_family = AF_INET;
+    server_address.sin_port = htons(SERVER_PORT);
+    temp = inet_pton(AF_INET, (const char *)SERVER_IP, &server_address.sin_addr);
 
     if (temp <= 0)
     {
-        printf("Error: inet_pton() failed.\n"); // If the conversion failed, print the error and exit main.
+        printf("Error: inet_pton() failed.\n");
         return -1;
     }
 
-    // Make a connection to the server with socket SendingSocket.
-
-    int connectResult = connect(sock, (struct sockaddr *)&serverAddress, sizeof(serverAddress));
-    if (connectResult == -1)
+    int connect_result = connect(sock, (struct sockaddr *)&server_address, sizeof(server_address));
+    if (connect_result == -1)
     {
         printf("Error: Connecting to server failed.\n");
         close(sock);
@@ -62,12 +96,12 @@ int main()
 
     printf("Connected to server!\n");
 
-    char buffer[buffer_size] = {0};
-    char *ACK = "ACK";
+    char buffer[BUFFER_SIZE] = {0};
+    char *ack_msg = "ACK";
 
     printf("Receiving file size...\n");
 
-    int size = recvFileSize(sock, buffer, ACK);
+    int size = recv_file_size(sock, buffer, ack_msg);
 
     if (size == -1)
     {
@@ -77,7 +111,7 @@ int main()
     }
 
     int counter = 0;   // The current bit of the file that will be written.
-    int chunkSize = 0; // The size of the chunk received from the server.
+    int chunk_size = 0; // The size of the chunk received from the server.
 
     if (size < 0)
     {
@@ -92,17 +126,14 @@ int main()
     // The **even** indices will store the time it took to receive the first half (meaning in cc algorithm reno).
     // The **odd** indices will store the time it took to receive the second half (meaning in cc algorithm cubic).
 
-    double time[1000] = {0};   // An array to store the time it took to receive each half of the file.
-    struct timeval start, end; // A struct to store the current time.
-    long sec, micsec;          // Variables that will hold the seconds and microseconds of the start and the end of the period of time receiving half of the file.
-    int current = 0;           // The current index of the time array to fill in the next ammount of time for the file to be recieved.
-    int flag = 1;              // A flag used to help measure the time it took to receive a half of the file (usage better explained in the code below).
+    double time_measurements[1000] = {0};
+    struct timeval start, end;
+    long sec, micsec;
+    int current = 0;
+    int flag = 1;
 
     while (1)
     {
-        // Initializing a pointer to the beginning of the file / creating a new file with the given name if it didn't exist beforehand.
-        // If we're at the beginning of sending the file or at half of the process of receiving the file.
-
         FILE *fp = fopen("recv.txt", "w");
         if (fp == NULL)
         {
@@ -112,121 +143,92 @@ int main()
         }
 
         // Setting the congestion control algorithm to reno for the receival of the first half of the file.
-
-        if (setsockopt(sock, IPPROTO_TCP, TCP_CONGESTION, cc1, 6) < 0)
+        if (setsockopt(sock, IPPROTO_TCP, TCP_CONGESTION, CC_ALGO_1, 6) < 0)
         {
-            printf("Error : Failed to set congestion control algorithm to reno.\n"); // If the setting of the congestion control algorithm failed,
-            close(sock);                                                             // print an error, close  and exit main.
+            printf("Error : Failed to set congestion control algorithm to reno.\n");
+            close(sock);
             return -1;
         }
 
-        printf("CC algorithm set to %s.\n", cc1);
-
+        printf("CC algorithm set to %s.\n", CC_ALGO_1);
         printf("Receiving the first part of the file...\n");
-
-        // We now start the loop for receiving chunks of the file or any predicted messages from the server.
 
         while (1)
         {
-            // Getting the current time and storing it in the variable 'start'.
-            //
-
             if (flag == 1)
             {
-                gettimeofday(&start, NULL); // Getting the current time.
+                gettimeofday(&start, NULL);
                 printf("Set start!");
                 flag = 0;
             }
 
-            // Receiving up to 1024 bytes of data from the server.
-
-            temp = recv(sock, buffer, buffer_size, 0); // Receiving data from the server.
+            temp = recv(sock, buffer, BUFFER_SIZE, 0);
 
             // If the counter + num of bytes we received equals to size/2 or size, we have received half of the size of the file.
-
-            // * There are 2 reasons for writing this part of the code here:
-            //   1) We want to be as precise as possible for us about the time it took to receive the first half of the file.
-            //   2) If we had a problem with receiving the file at any point in the code, we will not show any results,
-            //      so it does not matter if we write this part of the code here.
-
             if ((counter + temp == size / 2) && strcmp(buffer, "SEND KEY") != 0)
-            {
-                gettimeofday(&end, NULL); // Getting the current time.
-                printf("Set end!");
-                sec = end.tv_sec - start.tv_sec; // Calculating the microseconds it took to receive the first half of the file.
-                micsec = end.tv_usec - start.tv_usec;
-                time[current] = sec + micsec * (1e-6); // Storing the time it took to receive the first half of the file.
-                current++;                             // Incrementing the current index of the time array.
-                flag = 1;                              // Setting the flag to 1 to indicate that the next half of the file is being received.
-            }
-
-            if ((counter + temp == size) && strcmp(buffer, "FIN") != 0) // Doing the same as above, but for the second half of the file.
             {
                 gettimeofday(&end, NULL);
                 printf("Set end!");
                 sec = end.tv_sec - start.tv_sec;
                 micsec = end.tv_usec - start.tv_usec;
-                time[current] = sec + micsec * (1e-6);
+                time_measurements[current] = sec + micsec * (1e-6);
                 current++;
                 flag = 1;
             }
 
-            // if temp == -1, then receiving failed with a general error.
+            if ((counter + temp == size) && strcmp(buffer, "FIN") != 0)
+            {
+                gettimeofday(&end, NULL);
+                printf("Set end!");
+                sec = end.tv_sec - start.tv_sec;
+                micsec = end.tv_usec - start.tv_usec;
+                time_measurements[current] = sec + micsec * (1e-6);
+                current++;
+                flag = 1;
+            }
 
             if (temp == -1)
             {
-                printf("Error : Receive failed.\n"); // If receiving failed,
-                close(sock);                         // print an error, close the socket and exit main.
+                printf("Error : Receive failed.\n");
+                close(sock);
                 return -1;
             }
-
-            // if temp == 0, then the server's socket is closed.
-
             else if (size == 0)
             {
-                printf("Error : Server's socket is closed, couldn't receive anything.\n"); // If receiving failed,
-                close(sock);                                                               // print an error, close the socket and exit main.
+                printf("Error : Server's socket is closed, couldn't receive anything.\n");
+                close(sock);
                 return -1;
             }
-
-            // If the received data is "SEND KEY", we have received half of the file and the server asks us to send a key:
-
             else if (strcmp(buffer, "SEND KEY") == 0)
             {
                 printf("First part of the file received successfully!\n");
-
                 printf("Sending key...\n");
 
-                temp = sendKey(sock, buffer);
+                temp = send_key(sock, buffer);
 
                 if (temp == -1)
                 {
-                    printf("Error : Key sending failed.\n"); // if sending the key failed,
-                    close(sock);                             // print an error, close the socket and exit main.
+                    printf("Error : Key sending failed.\n");
+                    close(sock);
                     return -1;
                 }
 
                 printf("Keys matched!\n");
 
-                // If the counter is half the size of the file, change the congestion control algorithm to cubic to match the sender's algorithm:
-
-                if (setsockopt(sock, IPPROTO_TCP, TCP_CONGESTION, cc2, 6) < 0)
+                // If the counter is half the size of the file, change the congestion control algorithm to cubic.
+                if (setsockopt(sock, IPPROTO_TCP, TCP_CONGESTION, CC_ALGO_2, 6) < 0)
                 {
-                    printf("Error : Failed to set congestion control algorithm to cubic.\n"); // If the setting of the congestion control algorithm failed,
-                    close(sock);                                                              // print an error and exit main.
+                    printf("Error : Failed to set congestion control algorithm to cubic.\n");
+                    close(sock);
                     return -1;
                 }
 
-                printf("CC algorithm set to %s.\n", cc2);
-
+                printf("CC algorithm set to %s.\n", CC_ALGO_2);
                 printf("Receiving the second part of the file...\n");
             }
-
-            // If the received data is "FIN", then the file has been fully received, so break out of the loop:
-
             else if (strcmp(buffer, "FIN") == 0)
             {
-                temp = sendACK(sock, ACK);
+                temp = send_ack(sock, ack_msg);
 
                 if (temp == -1)
                 {
@@ -235,28 +237,21 @@ int main()
                 }
 
                 printf("Second part of the file received successfully!\n");
-
                 break;
             }
-
-            // If none of the above occur, then the received data is a chunk of the file:
-
             else
             {
-                chunkSize = temp;
-
-                temp = writeChunk(fp, sock, chunkSize, buffer, ACK);
+                chunk_size = temp;
+                temp = write_chunk(fp, sock, chunk_size, buffer, ack_msg);
 
                 if (temp == -1)
                 {
-                    printf("Error : Chunk writing failed.\n"); // If writing the chunk failed,
-                    close(sock);                               // print an error, close the socket and exit main.
+                    printf("Error : Chunk writing failed.\n");
+                    close(sock);
                     return -1;
                 }
 
-                counter += chunkSize; // Incrementing the counter by the number of bytes received.
-
-                // If the counter exceeds the size of the file, print an error and exit main:
+                counter += chunk_size;
 
                 if (counter > size)
                 {
@@ -269,39 +264,31 @@ int main()
 
         printf("File received successfully!\n");
 
-        // At this point, we expect the server to send "AGAIN" to indicate that it is ready to receive the file again,
-        // or send "END" to indicate that the server won't be sending the file once more.
-
-        temp = recv(sock, buffer, buffer_size, 0); // Receiving data from the server.
+        temp = recv(sock, buffer, BUFFER_SIZE, 0);
 
         if (temp == -1)
         {
-            printf("Error : Receive failed.\n"); // If receiving failed,
-            close(sock);                         // print an error, close the socket and exit main.
+            printf("Error : Receive failed.\n");
+            close(sock);
             return -1;
         }
         else if (size == 0)
         {
-            printf("Error : Server's socket is closed, couldn't receive anything.\n"); // If receiving failed,
-            close(sock);                                                               // print an error, close the socket and exit main.
+            printf("Error : Server's socket is closed, couldn't receive anything.\n");
+            close(sock);
             return -1;
         }
-
-        // If we get an "AGAIN" message, we'll send an ACK and continue the loop:
-
         else if (strcmp(buffer, "AGAIN") == 0)
         {
-            temp = sendACK(sock, ACK);
+            temp = send_ack(sock, ack_msg);
 
             if (temp == -1)
             {
-                close(sock); // If sending the ACK failed,
-                return -1;   // close the socket and exit main.
+                close(sock);
+                return -1;
             }
 
             printf("Server wishes to send the file again, deleting the file and preparing to receive it again...\n");
-
-            // Closing and removing the file. This is done so that the file can be written from the beginning again:
 
             fseek(fp, 0, SEEK_SET);
             fclose(fp);
@@ -310,19 +297,16 @@ int main()
 
             if (rmv != 0)
             {
-                printf("Error : File removal failed.\n"); // If the removal of the file failed,
-                close(sock);                              // print an error, close the socket and exit main.
+                printf("Error : File removal failed.\n");
+                close(sock);
                 return -1;
             }
 
             printf("File deleted successfully!\n");
         }
-
-        // If we get an "END" message: we'll send an ACK, also ask to end the connection and break out of the loop afterwards:
-
         else if (strcmp(buffer, "END") == 0)
         {
-            temp = sendACK(sock, ACK);
+            temp = send_ack(sock, ack_msg);
 
             if (temp == -1)
             {
@@ -332,7 +316,7 @@ int main()
 
             printf("Server wishes to end the connection, sending END message and closing the socket...\n");
 
-            temp = sendEND(sock, buffer);
+            temp = send_end(sock, buffer);
 
             if (temp == -1)
             {
@@ -342,10 +326,6 @@ int main()
 
             break;
         }
-
-        // At this point, we should have gotten either an END message or an AGAIN message.
-        // If we get anything else, print an error, close the socket and exit main:
-
         else
         {
             printf("Error : Received unexpected data.\n");
@@ -354,16 +334,11 @@ int main()
         }
     }
 
-    // Since the server is no longer interested in sending the file again, we now close the socket.
-
     close(sock);
-
     printf("Socket closed, goodbye!\n");
 
-    // Now we will print to the terminal the time of each cc algorithms and each of their iteration.
-
     printf("\n");
-    printf("Time it took to receive each iteration of 1st half of the file (in %s cc protocol):\n", cc1);
+    printf("Time it took to receive each iteration of 1st half of the file (in %s cc protocol):\n", CC_ALGO_1);
     printf("\n");
 
     int ind = 1;
@@ -372,33 +347,33 @@ int main()
 
     for (i = 0; i < current; i += 2)
     {
-        printf("Iteration %d: %f seconds.\n", ind, time[i]);
-        evensum += time[i];
+        printf("Iteration %d: %f seconds.\n", ind, time_measurements[i]);
+        evensum += time_measurements[i];
         ind++;
     }
 
     double evenavg = evensum / (ind - 1);
 
     printf("\n");
-    printf("Average time for %s cc protocol: %f seconds.\n", cc1, evenavg);
+    printf("Average time for %s cc protocol: %f seconds.\n", CC_ALGO_1, evenavg);
     printf("\n");
 
-    printf("Time it took to receive each iteration of the 2nd half of the file (in %s cc protocol):\n", cc2);
+    printf("Time it took to receive each iteration of the 2nd half of the file (in %s cc protocol):\n", CC_ALGO_2);
 
     ind = 1;
     double oddsum = 0;
 
     for (i = 1; i < current; i += 2)
     {
-        printf("Iteration %d: %f seconds.\n", ind, time[i]);
-        oddsum += time[i];
+        printf("Iteration %d: %f seconds.\n", ind, time_measurements[i]);
+        oddsum += time_measurements[i];
         ind++;
     }
 
     double oddavg = oddsum / (ind - 1);
 
     printf("\n");
-    printf("Average time for %s cc protocol: %f seconds.\n", cc2, oddavg);
+    printf("Average time for %s cc protocol: %f seconds.\n", CC_ALGO_2, oddavg);
     printf("\n");
 
     return 0;
@@ -406,37 +381,27 @@ int main()
 
 // ########################## THE FUNCTIONS: #############################
 
-// recvFileSize() receives the file size from the server and sends an ACK:
-
-int recvFileSize(int sock, char *buffer, char *ACK)
+int recv_file_size(int sock, char *buffer, char *ack)
 {
-
-    int bytes = recv(sock, buffer, buffer_size, 0);
-
-    // Now we will check for errors that are printed to the receiver's terminal if occured.
+    int bytes = recv(sock, buffer, BUFFER_SIZE, 0);
 
     if (bytes == -1)
     {
         printf("Error : Receive failed.\n");
         return -1;
     }
-
     else if (bytes == 0)
     {
         printf("Error : Server's socket is closed, couldn't receive anything.\n");
         return -1;
     }
 
-    // If we reached here, then the server sent us the file size successfully. Send an ACK:
+    int ack_result = send_ack(sock, ack);
 
-    int ack = sendACK(sock, ACK);
-
-    if (ack == -1)
+    if (ack_result == -1)
     {
-        return -1; // If sending the ACK failed, we'll return -1 to indicate that the function failed and exit main.
+        return -1;
     }
-
-    // We will now convert the string that holds the size of the file (in bytes) to a long and then to an int, and return it.
 
     char **end;
     long val = strtol(buffer, end, 10);
@@ -447,59 +412,45 @@ int recvFileSize(int sock, char *buffer, char *ACK)
     return size;
 }
 
-// sendKey() sends the key to the server and receives an ACK:
-
-int sendKey(int sock, char *buffer)
+int send_key(int sock, char *buffer)
 {
-    // We now calculate and send the key to the server.
+    int key = 1714 ^ 6521;
+    sprintf(buffer, "%d", key);
 
-    int key = 1714 ^ 6521;      // Calculating the key.
-    sprintf(buffer, "%d", key); // Converting the key into the buffer.
+    int send_result = send(sock, buffer, (int)(strlen(buffer) + 1), 0);
 
-    int sendResult = send(sock, buffer, (int)(strlen(buffer) + 1), 0);
-
-    // Now we will check for errors that are printed to the receiver's terminal if occured.
-
-    if (sendResult == -1)
+    if (send_result == -1)
     {
         printf("Error : Sending failed.\n");
         return -1;
     }
-
-    else if (sendResult == 0)
+    else if (send_result == 0)
     {
         printf("Error : Server's socket is closed, couldn't send to it.\n");
         return -1;
     }
-
-    else if (sendResult != (int)(strlen(buffer) + 1))
+    else if (send_result != (int)(strlen(buffer) + 1))
     {
         printf("Error : Server received a corrupted buffer.\n");
         return -1;
     }
 
-    // We reset the bytes used in the buffer for later uses of it.
-
     bzero(buffer, (int)(strlen(buffer) + 1));
 
-    // If the keys match, we should receive an "OK" message, else - we end the program.
+    int recv_result = recv(sock, buffer, 3, 0);
 
-    int recvResult = recv(sock, buffer, 3, 0);
-
-    if (recvResult == -1)
+    if (recv_result == -1)
     {
         printf("Error : Receive failed.\n");
         close(sock);
         return -1;
     }
-
-    else if (recvResult == 0)
+    else if (recv_result == 0)
     {
         printf("Error : Server's socket is closed, couldn't receive anything.\n");
         close(sock);
         return -1;
     }
-
     else if (strcmp(buffer, "OK") != 0)
     {
         printf("Error : Key doesn't match the server's.\n");
@@ -507,121 +458,96 @@ int sendKey(int sock, char *buffer)
         return -1;
     }
 
-    // We reset the bytes used in the buffer for later uses of it.
-
     bzero(buffer, (int)(strlen(buffer) + 1));
 
     return 0;
 }
 
-// sendACK() sends an ACK to the server:
-
-int sendACK(int sock, char *ACK)
+int send_ack(int sock, char *ack)
 {
-    // We now send an "ACK" message to the sender.
+    int send_result = send(sock, ack, 4, 0);
 
-    int sendResult = send(sock, ACK, 4, 0);
-
-    // Now we will check for errors that are printed to the receiver's terminal if occured.
-
-    if (sendResult == -1)
+    if (send_result == -1)
     {
         printf("Error : Receive failed.\n");
         return -1;
     }
-
-    else if (sendResult == 0)
+    else if (send_result == 0)
     {
         printf("Error : Client's socket is closed, couldn't receive anything.\n");
         return -1;
     }
 
-    if (sendResult != 4)
+    if (send_result != 4)
     {
         printf("Error : Server received a corrupted buffer.\n");
         return -1;
     }
+    return 0;
 }
 
-// writeChunk() writes the chunk to the file sent by the server and sends an ACK:
-
-int writeChunk(FILE *fp, int sock, int chunkSize, char *buffer, char *ACK)
+int write_chunk(FILE *fp, int sock, int chunk_size, char *buffer, char *ack)
 {
-    fwrite(buffer, chunkSize, 1, fp); // Writing the buffer to the file.
+    fwrite(buffer, chunk_size, 1, fp);
 
-    int sendResult = send(sock, ACK, 4, 0); // Sending an ACK to the server.
+    int send_result = send(sock, ack, 4, 0);
 
-    if (sendResult == -1)
+    if (send_result == -1)
     {
-        printf("Error : Sending failed."); // If the send failed, print an error and exit main.
+        printf("Error : Sending failed.");
+        return -1;
+    }
+    else if (send_result == 0)
+    {
+        printf("Error : Server's socket is closed, couldn't send to it.");
+        return -1;
+    }
+    else if (send_result != 4)
+    {
+        printf("Error : Server received a corrupted buffer.");
         return -1;
     }
 
-    else if (sendResult == 0)
-    {
-        printf("Error : Server's socket is closed, couldn't send to it."); // If the send failed, print an error and exit main.
-        return -1;
-    }
-
-    else if (sendResult != 4)
-    {
-        printf("Error : Server received a corrupted buffer."); // If the send failed, print an error and exit main.
-        return -1;
-    }
-
-    bzero(buffer, chunkSize); // Resetting the buffer.
+    bzero(buffer, chunk_size);
 
     return 0;
 }
 
-// sendEND() sends an 'END' to end the connection with the server and receives an ACK:
-
-int sendEND(int sock, char *buffer)
+int send_end(int sock, char *buffer)
 {
-    // We send an "END" message to the server, and later expect to receive an "ACK".
+    int send_result = send(sock, "END", 4, 0);
 
-    int sendResult = send(sock, "END", 4, 0);
-
-    // Now we will check for errors that are printed to the receiver's terminal if occured.
-
-    if (sendResult == -1)
+    if (send_result == -1)
     {
         printf("Error : Receive failed.\n");
         return -1;
     }
-
-    else if (sendResult == 0)
+    else if (send_result == 0)
     {
         printf("Error : Client's socket is closed, couldn't receive anything.\n");
         return -1;
     }
 
-    if (sendResult != 4)
+    if (send_result != 4)
     {
         printf("Error : Server received a corrupted buffer.\n");
         return -1;
     }
 
-    // We now wait for an "ACK" message.
+    int recv_result = recv(sock, buffer, BUFFER_SIZE, 0);
 
-    int recvResult = recv(sock, buffer, buffer_size, 0);
-
-    // Now we will check for errors that are printed to the receiver's terminal if occured.
-
-    if (recvResult == -1)
+    if (recv_result == -1)
     {
         printf("Error : Receive failed.\n");
         close(sock);
         return -1;
     }
-
-    else if (recvResult == 0)
+    else if (recv_result == 0)
     {
         printf("Error : Server's socket is closed, couldn't receive anything.\n");
         close(sock);
         return -1;
     }
-
     else if (strcmp(buffer, "ACK") != 0)
     {
         printf("Error : Server's ACK not received propperly.\n");
@@ -629,7 +555,7 @@ int sendEND(int sock, char *buffer)
         return -1;
     }
 
-    bzero(buffer, (int)(strlen(buffer) + 1)); // Reset the buffer
+    bzero(buffer, (int)(strlen(buffer) + 1));
 
     return 0;
 }

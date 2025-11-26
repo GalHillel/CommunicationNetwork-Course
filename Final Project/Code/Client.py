@@ -1,11 +1,26 @@
-import tkinter as tk
+"""
+HTTP Downloader Client
+
+This module provides a GUI client for downloading files using either TCP or RUDP protocols.
+The client connects to a server, sends a URL and filename, and receives the downloaded content.
+"""
+
 import socket
+import tkinter as tk
+from typing import Optional
+
+# Global client socket
+client_socket: Optional[socket.socket] = None
 
 
-# define function to initiate connection
-def connect():
-    # get inputs from GUI
-    global clientsocket
+def connect() -> None:
+    """
+    Initiates connection to the server and downloads the requested file.
+    
+    Reads URL, protocol, and filename from GUI inputs, creates appropriate socket,
+    and sends download request to server.
+    """
+    global client_socket
     url = url_input.get().strip()
     protocol = protocol_var.get()
     filename = filename_input.get().strip()
@@ -31,14 +46,14 @@ def connect():
         return
 
     try:
-        clientsocket = socket.socket(socket.AF_INET, sock_type)
+        client_socket = socket.socket(socket.AF_INET, sock_type)
 
-        clientsocket.connect((host, port))
+        client_socket.connect((host, port))
 
         message = f"{url},{filename}"
-        clientsocket.sendto(message.encode('utf-8'), (host, port))
+        client_socket.sendto(message.encode('utf-8'), (host, port))
 
-        response, server_address = clientsocket.recvfrom(1024)
+        response, server_address = client_socket.recvfrom(1024)
 
         response_label.config(text=response.decode('utf-8'))
 
@@ -46,7 +61,8 @@ def connect():
         response_label.config(text=f"Error: {e}")
     finally:
         # close the socket
-        clientsocket.close()
+        if client_socket:
+            client_socket.close()
 
 
 # create GUI

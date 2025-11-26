@@ -10,13 +10,21 @@ INDEFINITE = api.CalculatorHeader.MAX_CACHE_CONTROL
 
 
 def process_request(request: api.CalculatorHeader, server_address: tuple[str, int]) -> tuple[api.CalculatorHeader, int, int, bool, bool, bool]:
-    '''
-    Function which processes the client request if specified we cache the result
-    Returns the response, the time remaining before the server deems the response stale, the time remaining before the client deems the response stale, whether the response returned was from the cache, whether the response was stale, and whether we cached the response
-    If the request.cache_control is 0, we don't use the cache and send a new request to the server. (like a reload)
-    If the request.cache_control < time() - cache[request].unix_time_stamp, the client doesn't allow us to use the cache and we send a new request to the server.
-    If the cache[request].cache_control is 0, the response must not be cached.
-    '''
+    """
+    Process the client request, checking the cache first.
+    
+    Args:
+        request (api.CalculatorHeader): The client request.
+        server_address (tuple[str, int]): The server address to forward to if needed.
+        
+    Returns:
+        tuple: (response, server_time_remaining, client_time_remaining, cache_hit, was_stale, cached)
+        
+    Raises:
+        TypeError: If the request is not a valid request.
+        api.CalculatorServerError: If connection to server fails.
+        api.CalculatorClientError: If unpacking the response fails.
+    """
     if not request.is_request:
         raise TypeError("Received a response instead of a request")
 
@@ -75,6 +83,13 @@ def process_request(request: api.CalculatorHeader, server_address: tuple[str, in
 
 
 def proxy(proxy_address: tuple[str, int], server_adress: tuple[str, int]) -> None:
+    """
+    Start the proxy server.
+    
+    Args:
+        proxy_address (tuple[str, int]): The address to bind the proxy to.
+        server_adress (tuple[str, int]): The address of the real server.
+    """
     # socket(socket.AF_INET, socket.SOCK_STREAM)
     # (1) AF_INET is the address family for IPv4 (Address Family)
     # (2) SOCK_STREAM is the socket type for TCP (Socket Type) - [SOCK_DGRAM is the socket type for UDP]
@@ -84,12 +99,9 @@ def proxy(proxy_address: tuple[str, int], server_adress: tuple[str, int]) -> Non
         proxy_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 
         # Prepare the proxy socket
-
-        # * Fill in start (1)
         proxy_socket.bind((proxy_host, proxy_port))
         proxy_socket.listen(1)
         print('The proxy is ready to receive!')
-        # * Fill in end (1)
 
         threads = []
         print(f"Listening on {proxy_address[0]}:{proxy_address[1]}")
@@ -97,10 +109,7 @@ def proxy(proxy_address: tuple[str, int], server_adress: tuple[str, int]) -> Non
         while True:
             try:
                 # Establish connection with client.
-
-                # * Fill in start (2)
                 client_socket, client_address = proxy_socket.accept()
-                # * Fill in end (2)
 
                 # Create a new thread to handle the client request
                 thread = threading.Thread(target=client_handler, args=(
@@ -116,18 +125,20 @@ def proxy(proxy_address: tuple[str, int], server_adress: tuple[str, int]) -> Non
 
 
 def client_handler(client_socket: socket.socket, client_address: tuple[str, int], server_address: tuple[str, int]) -> None:
-    '''
-    Function which handles client requests
-    '''
+    """
+    Handle individual client requests.
+    
+    Args:
+        client_socket (socket.socket): The client socket.
+        client_address (tuple[str, int]): The client address.
+        server_address (tuple[str, int]): The server address.
+    """
     client_prefix = f"{{{client_address[0]}:{client_address[1]}}}"
     with client_socket:  # closes the socket when the block is exited
         print(f"{client_prefix} Connected established")
         while True:
             # Receive data from the client
-
-            # * Fill in start (3)
             data = client_socket.recv(8192)
-            # * Fill in end (3)
 
             if not data:
                 break
@@ -161,11 +172,9 @@ def client_handler(client_socket: socket.socket, client_address: tuple[str, int]
                     f"{client_prefix} Sending response of length {len(response)} bytes")
 
                 # Send the response back to the client
-                # * Fill in start (4)
                 client_socket.send(response)
                 client_socket.close()
                 break
-                # * Fill in end (4)
 
             except Exception as e:
                 print(f"Unexpected server error: {e}")

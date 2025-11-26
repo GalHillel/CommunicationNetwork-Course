@@ -8,11 +8,11 @@ import time
 
 # Predefined variables
 # The buffer size is the maximum amount of data that can be received at once
-BUFFER_SIZE = 65536
-DEFAULT_SERVER_HOST = "127.0.0.1"  # The default host for the server
-DEFAULT_SERVER_PORT = 9999  # The default port for the server
-DEFAULT_PROXY_HOST = "127.0.0.1"  # The default host for the proxy
-DEFAULT_PROXY_PORT = 9998  # The default port for the proxy
+BUFFER_SIZE: int = 65536
+DEFAULT_SERVER_HOST: str = "127.0.0.1"  # The default host for the server
+DEFAULT_SERVER_PORT: int = 9999  # The default port for the server
+DEFAULT_PROXY_HOST: str = "127.0.0.1"  # The default host for the proxy
+DEFAULT_PROXY_PORT: int = 9998  # The default port for the proxy
 
 
 # ========================================================================
@@ -22,7 +22,7 @@ DEFAULT_PROXY_PORT = 9998  # The default port for the proxy
 # region Protocol API
 
 
-'''
+"""
 protocol "Unix Time Stamp:32,Total Length:16,Res.:3,Cache:1,Steps:1,Type:1,Status Code:10,Cache Control:16,Padding:16,Data:<=65440"
 protocol:
 * Unix Time Stamp (32 bits = 4 bytes):
@@ -81,10 +81,14 @@ Total Length: 16 bits = 2 bytes -> H
 Reserved + Flags + Status Code: 3 bits + 3 bits + 10 bits = 2 byte -> H
 Cache Control: 16 bits = 2 bytes -> H
 Padding: 16 bits = 2 bytes -> 2x
-'''
+"""
 
 
 class CalculatorHeader:
+    """
+    Represents the header of the calculator protocol packet.
+    Handles packing and unpacking of the header fields.
+    """
     HEADER_FORMAT: typing.Final[str] = '!LHHHxx'
     HEADER_MIN_LENGTH: typing.Final[int] = struct.calcsize(HEADER_FORMAT)
     # Big enough to hold the header and a lot of data
@@ -101,6 +105,20 @@ class CalculatorHeader:
     STATUS_UNKNOWN: typing.Final[int] = 999
 
     def __init__(self, unix_time_stamp: int, total_length: typing.Optional[int], reserved: int, cache_result: bool, show_steps: bool, is_request: bool, status_code: int, cache_control: int, data: bytes = b'') -> None:
+        """
+        Initialize the CalculatorHeader.
+
+        Args:
+            unix_time_stamp (int): The time the packet was sent.
+            total_length (typing.Optional[int]): Total length of the packet. If None, calculated from data.
+            reserved (int): Reserved bits (must be 0).
+            cache_result (bool): Whether to cache the result.
+            show_steps (bool): Whether to include computation steps.
+            is_request (bool): True if request, False if response.
+            status_code (int): Status code (for responses).
+            cache_control (int): Cache control value.
+            data (bytes): The payload data.
+        """
         self.unix_time_stamp = unix_time_stamp
         self.total_length = total_length
         if self.total_length is None:
@@ -144,10 +162,12 @@ class CalculatorHeader:
 
     @staticmethod
     def pack_flags(reserved: int, cache_result: bool, show_steps: bool, is_request: bool, status_code: int) -> int:
+        """Pack individual flag components into a single integer."""
         return (reserved << 13) | (cache_result << 12) | (show_steps << 11) | (is_request << 10) | status_code
 
     @staticmethod
     def unpack_flags(flags: int) -> typing.Tuple[int, bool, bool, bool, int]:
+        """Unpack the flags integer into its components."""
         status_code = flags & ((1 << 10) - 1)  # flags & 0b000_0_0_0_1111111111
         is_request = flags & (1 << 10)  # flags & 0b000_0_0_1_0000000000
         show_steps = flags & (1 << 11)  # flags & 0b000_0_1_0_0000000000
@@ -157,10 +177,12 @@ class CalculatorHeader:
         return reserved, bool(cache_result), bool(show_steps), bool(is_request), status_code
 
     def pack(self) -> bytes:
+        """Pack the header and data into bytes."""
         return struct.pack(self.HEADER_FORMAT, self.unix_time_stamp, self.total_length, self.pack_flags(self.reserved, self.cache_result, self.show_steps, self.is_request, self.status_code), self.cache_control) + self.data
 
     @classmethod
     def unpack(cls, data: bytes) -> 'CalculatorHeader':
+        """Unpack bytes into a CalculatorHeader object."""
         if len(data) < cls.HEADER_MIN_LENGTH:
             raise ValueError(
                 f'The data is too short ({len(data)} bytes) to be a valid header')
@@ -172,22 +194,27 @@ class CalculatorHeader:
 
     @classmethod
     def from_request(cls, data: bytes, show_steps: bool, cache_result: bool, cache_control: int) -> 'CalculatorHeader':
+        """Create a request header."""
         return cls(unix_time_stamp=int(time.time()), total_length=None, reserved=0, cache_result=cache_result, show_steps=show_steps, is_request=True, status_code=0, cache_control=cache_control, data=data)
 
     @classmethod
     def from_expression(cls, expr: Expression, show_steps: bool, cache_result: bool, cache_control: int) -> 'CalculatorHeader':
+        """Create a request header from an Expression object."""
         return cls.from_request(data=pickle.dumps(expr), show_steps=show_steps, cache_result=cache_result, cache_control=cache_control)
 
     @classmethod
     def from_response(cls, data: bytes, status_code: int, show_steps: bool, cache_result: bool, cache_control: int) -> 'CalculatorHeader':
+        """Create a response header."""
         return cls(unix_time_stamp=int(time.time()), total_length=None, reserved=0, cache_result=cache_result, show_steps=show_steps, is_request=False, status_code=status_code, cache_control=cache_control, data=data)
 
     @classmethod
     def from_result(cls, result: numbers.Real, steps: list[str], cache_result: bool, cache_control: int) -> 'CalculatorHeader':
+        """Create a response header from a result."""
         return cls.from_response(data=pickle.dumps((result, steps)), status_code=CalculatorHeader.STATUS_OK, show_steps=bool(steps), cache_result=cache_result, cache_control=cache_control)
 
     @classmethod
     def from_error(cls, error: Exception, status_code: int, cache_result: bool, cache_control: int) -> 'CalculatorHeader':
+        """Create a response header from an error."""
         return cls.from_response(data=pickle.dumps(error), status_code=status_code, show_steps=False, cache_result=cache_result, cache_control=cache_control)
 
     def __bytes__(self) -> bytes:
@@ -195,6 +222,7 @@ class CalculatorHeader:
 
 
 def data_to_expression(header: CalculatorHeader) -> Expression:
+    """Extract an Expression object from the header data."""
     try:
         expr = pickle.loads(header.data)
         if not isinstance(expr, Expression):
@@ -207,6 +235,7 @@ def data_to_expression(header: CalculatorHeader) -> Expression:
 
 
 def data_to_result(header: CalculatorHeader) -> typing.Tuple[numbers.Real, list[str]]:
+    """Extract a result tuple from the header data."""
     try:
         result = pickle.loads(header.data)
         if not isinstance(result, tuple) or len(result) != 2 or not isinstance(result[0], numbers.Real) or not isinstance(result[1], list):
@@ -219,6 +248,7 @@ def data_to_result(header: CalculatorHeader) -> typing.Tuple[numbers.Real, list[
 
 
 def data_to_error(header: CalculatorHeader) -> Exception:
+    """Extract an Exception object from the header data."""
     try:
         error = pickle.loads(header.data)
         if not isinstance(error, Exception):
@@ -231,14 +261,17 @@ def data_to_error(header: CalculatorHeader) -> Exception:
 
 
 class CalculatorError(Exception):
+    """Base class for calculator errors."""
     pass
 
 
 class CalculatorServerError(CalculatorError):
+    """Error raised by the calculator server."""
     pass
 
 
 class CalculatorClientError(CalculatorError):
+    """Error raised by the calculator client."""
     pass
 
 # endregion

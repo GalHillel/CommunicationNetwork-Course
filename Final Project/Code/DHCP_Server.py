@@ -1,20 +1,35 @@
+"""
+DHCP Server Implementation
+
+This module implements a DHCP server that listens for DHCP discovery and request messages,
+assigns IP addresses to clients, and manages IP address availability.
+"""
+
 import socket
+from typing import Optional
 
+dhcp_server_address: str = "0.0.0.0"  # Listen on all available network interfaces
+dhcp_server_port: int = 67
 
-dhcp_server_address = "0.0.0.0"  # Listen on all available network interfaces
-dhcp_server_port = 67
-
-dhcp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+dhcp_socket: socket.socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 dhcp_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 dhcp_socket.bind((dhcp_server_address, dhcp_server_port))
 print(f"DHCP server listening on {dhcp_server_address}:{dhcp_server_port}")
 
-ip_range_start = "192.168.1.100"
-ip_range_end = "192.168.1.200"
+ip_range_start: str = "192.168.1.100"
+ip_range_end: str = "192.168.1.200"
 
 
-def is_ip_available(ip_address):
-    """Check if an IP address is available by pinging it."""
+def is_ip_available(ip_address: str) -> bool:
+    """
+    Check if an IP address is available by pinging it.
+    
+    Args:
+        ip_address: The IP address to check.
+        
+    Returns:
+        True if the IP address is available, False otherwise.
+    """
     icmp_socket = socket.socket(
         socket.AF_INET, socket.SOCK_RAW, socket.IPPROTO_ICMP)
     icmp_socket.setsockopt(socket.SOL_IP, socket.IP_TTL, 1)
@@ -27,8 +42,16 @@ def is_ip_available(ip_address):
         return True  # No response, so IP address is available
 
 
-def generate_dhcp_offer(ip_address):
-    """Generate a DHCP offer message with the available IP address"""
+def generate_dhcp_offer(ip_address: str) -> bytearray:
+    """
+    Generate a DHCP offer message with the available IP address.
+    
+    Args:
+        ip_address: The IP address to offer to the client.
+        
+    Returns:
+        A bytearray containing the DHCP offer message.
+    """
     dhcp_offer = bytearray()
     dhcp_offer += b"\x02"  # Message type: DHCP offer
     dhcp_offer += b"\x01"  # Subnet mask: 255.255.255.0
@@ -42,8 +65,16 @@ def generate_dhcp_offer(ip_address):
     return dhcp_offer
 
 
-def generate_dhcp_ack(requested_ip_address):
-    """Generate a DHCP acknowledgement message with the assigned IP address"""
+def generate_dhcp_ack(requested_ip_address: str) -> bytearray:
+    """
+    Generate a DHCP acknowledgement message with the assigned IP address.
+    
+    Args:
+        requested_ip_address: The IP address requested by the client.
+        
+    Returns:
+        A bytearray containing the DHCP acknowledgement message.
+    """
     dhcp_ack = bytearray()
     dhcp_ack += b"\x05"  # Message type: DHCP acknowledgement
     dhcp_ack += requested_ip_address.encode()  # Assigned IP address
@@ -71,7 +102,7 @@ while True:
 
     if dhcp_message_type == 1:  # DHCP discover message
         # Find an available IP address
-        ip_address = None
+        ip_address: Optional[str] = None
         for i in range(int(ip_range_start.split(".")[-1]), int(ip_range_end.split(".")[-1])):
             test_ip_address = "192.168.1." + str(i)
             if is_ip_available(test_ip_address):
